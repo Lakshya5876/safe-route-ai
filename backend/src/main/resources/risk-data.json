@@ -1,14 +1,149 @@
 [
   {
-    "zoneName": "Karol Bagh Crime Cluster",
-    "baseRisk": 25
+    "name": "Karol Bagh Snatching Cluster",
+    "latitude": 28.6510,
+    "longitude": 77.1900,
+    "radius": 1.2,
+    "baseRisk": 35
   },
   {
-    "zoneName": "Old Delhi Late Night Risk",
+    "name": "Paharganj Tourist Crime Belt",
+    "latitude": 28.6448,
+    "longitude": 77.2167,
+    "radius": 1.0,
+    "baseRisk": 32
+  },
+  {
+    "name": "Old Delhi Night Risk Zone",
+    "latitude": 28.6562,
+    "longitude": 77.2410,
+    "radius": 1.3,
+    "baseRisk": 38
+  },
+  {
+    "name": "Seelampur High Density Cluster",
+    "latitude": 28.6692,
+    "longitude": 77.2670,
+    "radius": 1.5,
+    "baseRisk": 40
+  },
+  {
+    "name": "Anand Vihar Transit Risk",
+    "latitude": 28.6469,
+    "longitude": 77.3155,
+    "radius": 1.2,
     "baseRisk": 30
   },
   {
-    "zoneName": "Generic Urban Risk",
-    "baseRisk": 20
+    "name": "Sarai Kale Khan ISBT Zone",
+    "latitude": 28.5896,
+    "longitude": 77.2518,
+    "radius": 1.1,
+    "baseRisk": 28
+  },
+  {
+    "name": "Govindpuri Assault Reports Zone",
+    "latitude": 28.5363,
+    "longitude": 77.2576,
+    "radius": 1.3,
+    "baseRisk": 34
+  },
+  {
+    "name": "Sangam Vihar Informal Settlement Risk",
+    "latitude": 28.4996,
+    "longitude": 77.2386,
+    "radius": 1.6,
+    "baseRisk": 37
+  },
+  {
+    "name": "Hauz Khas Nightlife Risk",
+    "latitude": 28.5494,
+    "longitude": 77.2001,
+    "radius": 1.0,
+    "baseRisk": 29
+  },
+  {
+    "name": "Uttam Nagar Border Belt",
+    "latitude": 28.6219,
+    "longitude": 77.0558,
+    "radius": 1.8,
+    "baseRisk": 33
+  },
+  {
+    "name": "Najafgarh Peripheral Zone",
+    "latitude": 28.6092,
+    "longitude": 76.9855,
+    "radius": 2.0,
+    "baseRisk": 31
+  },
+  {
+    "name": "Bawana Industrial Risk Area",
+    "latitude": 28.7996,
+    "longitude": 77.0405,
+    "radius": 2.0,
+    "baseRisk": 36
+  },
+  {
+    "name": "Narela Outer Cluster",
+    "latitude": 28.8520,
+    "longitude": 77.0920,
+    "radius": 2.0,
+    "baseRisk": 35
+  },
+  {
+    "name": "Connaught Place Dense Commercial Zone",
+    "latitude": 28.6315,
+    "longitude": 77.2167,
+    "radius": 1.0,
+    "baseRisk": 22
+  },
+  {
+    "name": "Lajpat Nagar Market Pickpocketing Zone",
+    "latitude": 28.5677,
+    "longitude": 77.2436,
+    "radius": 1.0,
+    "baseRisk": 27
+  },
+  {
+    "name": "Tilak Nagar Local Crime Cluster",
+    "latitude": 28.6365,
+    "longitude": 77.0926,
+    "radius": 1.3,
+    "baseRisk": 26
+  },
+  {
+    "name": "Kashmere Gate Transport Hub",
+    "latitude": 28.6667,
+    "longitude": 77.2285,
+    "radius": 1.2,
+    "baseRisk": 30
+  },
+  {
+    "name": "Rohini Sector Cluster",
+    "latitude": 28.7041,
+    "longitude": 77.1025,
+    "radius": 1.5,
+    "baseRisk": 24
+  },
+  {
+    "name": "Dwarka Planned Low Risk Zone",
+    "latitude": 28.5921,
+    "longitude": 77.0460,
+    "radius": 1.8,
+    "baseRisk": 12
+  },
+  {
+    "name": "Chanakyapuri Diplomatic Enclave",
+    "latitude": 28.5983,
+    "longitude": 77.1886,
+    "radius": 1.5,
+    "baseRisk": 8
+  },
+  {
+    "name": "Central Secretariat Secure Zone",
+    "latitude": 28.6143,
+    "longitude": 77.2090,
+    "radius": 1.0,
+    "baseRisk": 5
   }
 ]

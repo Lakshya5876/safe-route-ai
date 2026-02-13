@@ -4,31 +4,36 @@ import java.util.List;
 
 public class RouteResponse {
 
-    private String polyline;
-    private double totalRiskScore;
+    private List<List<Double>> route;
+    private double safetyScore;
     private String riskLevel;
-    private List<RiskBreakdown> breakdown;
+    private List<RiskBreakdown> alerts;
 
-    public RouteResponse(String polyline, double totalRiskScore, String riskLevel, List<RiskBreakdown> breakdown) {
-        this.polyline = polyline;
-        this.totalRiskScore = totalRiskScore;
+    public RouteResponse(
+            List<List<Double>> route,
+            double safetyScore,
+            String riskLevel,
+            List<RiskBreakdown> alerts
+    ) {
+        this.route = route;
+        this.safetyScore = safetyScore;
         this.riskLevel = riskLevel;
-        this.breakdown = breakdown;
+        this.alerts = alerts;
     }
 
-    public String getPolyline() {
-        return polyline;
+    public List<List<Double>> getRoute() {
+        return route;
     }
 
-    public double getTotalRiskScore() {
-        return totalRiskScore;
+    public double getSafetyScore() {
+        return safetyScore;
     }
 
     public String getRiskLevel() {
         return riskLevel;
     }
 
-    public List<RiskBreakdown> getBreakdown() {
-        return breakdown;
+    public List<RiskBreakdown> getAlerts() {
+        return alerts;
     }
 }

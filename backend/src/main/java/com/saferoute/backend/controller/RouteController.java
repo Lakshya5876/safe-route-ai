@@ -1,49 +1,74 @@
 package com.saferoute.backend.controller;
 
-import com.saferoute.backend.model.RouteRequest;
-import com.saferoute.backend.model.RouteResponse;
-import com.saferoute.backend.model.RiskBreakdown;
-import com.saferoute.backend.service.RiskEngineService;
+import com.saferoute.backend.model.*;
+import com.saferoute.backend.service.*;
+
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.util.*;
 
 @RestController
-@RequestMapping("/api/route")
+@RequestMapping("/api")
 @CrossOrigin(origins = "http://localhost:5173")
 public class RouteController {
 
     private final RiskEngineService riskEngineService;
+    private final ORSRoutingService orsRoutingService;
 
-    public RouteController(RiskEngineService riskEngineService) {
+    public RouteController(
+            RiskEngineService riskEngineService,
+            ORSRoutingService orsRoutingService
+    ) {
         this.riskEngineService = riskEngineService;
+        this.orsRoutingService = orsRoutingService;
     }
 
-    @PostMapping("/safest")
-    public RouteResponse getSafestRoute(@RequestBody RouteRequest request) {
+    @PostMapping("/route")
+    public Map<String, Object> getRoute(
+            @RequestBody RouteRequest request
+    ) {
 
-        
-        double riskScore = riskEngineService.calculateRisk(request.getTime());
+        List<List<Double>> coordinates =
+                orsRoutingService.getRouteCoordinates(
+                        request.getOrigin().getLat(),
+                        request.getOrigin().getLng(),
+                        request.getDestination().getLat(),
+                        request.getDestination().getLng()
+                );
 
-        
-        List<RiskBreakdown> breakdown = riskEngineService.getBreakdown(request.getTime());
+        if (coordinates.isEmpty()) {
 
-        
-        String riskLevel;
-        if (riskScore >= 40) {
-            riskLevel = "High";
-        } else if (riskScore >= 25) {
-            riskLevel = "Moderate";
-        } else {
-            riskLevel = "Low";
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("route", new ArrayList<>());
+            errorResponse.put("safetyScore", 0);
+            errorResponse.put("riskLevel", "UNAVAILABLE");
+            errorResponse.put("alerts", new ArrayList<>());
+            return errorResponse;
         }
 
-        
-        return new RouteResponse(
-                "dummy_polyline_string",
-                riskScore,
-                riskLevel,
-                breakdown
-        );
+        double riskScore =
+                riskEngineService.calculateRouteRisk(
+                        coordinates,
+                        request.getTime()
+                );
+
+        List<RiskBreakdown> breakdown =
+                riskEngineService.getRouteBreakdown(
+                        coordinates,
+                        request.getTime()
+                );
+
+        String riskLevel =
+                riskScore >= 70 ? "HIGH"
+                : riskScore >= 40 ? "MODERATE"
+                : "LOW";
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("route", coordinates);
+        response.put("safetyScore", riskScore);
+        response.put("riskLevel", riskLevel);
+        response.put("alerts", breakdown);
+
+        return response;
     }
 }
