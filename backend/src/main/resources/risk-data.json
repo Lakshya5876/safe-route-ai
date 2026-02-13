@@ -1,0 +1,14 @@
+[
+  {
+    "zoneName": "Karol Bagh Crime Cluster",
+    "baseRisk": 25
+  },
+  {
+    "zoneName": "Old Delhi Late Night Risk",
+    "baseRisk": 30
+  },
+  {
+    "zoneName": "Generic Urban Risk",
+    "baseRisk": 20
+  }
+]

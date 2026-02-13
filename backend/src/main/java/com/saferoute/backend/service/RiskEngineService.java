@@ -1,8 +1,13 @@
 package com.saferoute.backend.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.saferoute.backend.model.RiskBreakdown;
+import com.saferoute.backend.model.RiskZone;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
+import java.io.InputStream;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,20 +15,34 @@ import java.util.List;
 @Service
 public class RiskEngineService {
 
+    private List<RiskZone> riskZones = new ArrayList<>();
+
+    @PostConstruct
+    public void loadRiskData() {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            InputStream inputStream = getClass().getResourceAsStream("/risk-data.json");
+            riskZones = mapper.readValue(inputStream, new TypeReference<List<RiskZone>>() {});
+            System.out.println("Risk data loaded: " + riskZones.size() + " zones");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     public double calculateRisk(String time) {
 
-        double baseRisk = 20; // Base crime zone risk
+        double baseRisk = riskZones.stream()
+                .mapToDouble(RiskZone::getBaseRisk)
+                .average()
+                .orElse(20);
 
         if (time != null && !time.isEmpty()) {
 
             LocalTime userTime = LocalTime.parse(time);
 
-            // Late night high risk (11 PM – 4 AM)
             if (userTime.isAfter(LocalTime.of(23, 0)) || userTime.isBefore(LocalTime.of(4, 0))) {
                 baseRisk += 20;
-            }
-            // Evening moderate risk (8 PM – 11 PM)
-            else if (userTime.isAfter(LocalTime.of(20, 0))) {
+            } else if (userTime.isAfter(LocalTime.of(20, 0))) {
                 baseRisk += 10;
             }
         }
@@ -35,7 +54,8 @@ public class RiskEngineService {
 
         List<RiskBreakdown> breakdown = new ArrayList<>();
 
-        breakdown.add(new RiskBreakdown("Crime Zone", 20));
+        breakdown.add(new RiskBreakdown("Base Crime Risk (From Dataset)", 
+                riskZones.stream().mapToDouble(RiskZone::getBaseRisk).average().orElse(20)));
 
         if (time != null && !time.isEmpty()) {
 

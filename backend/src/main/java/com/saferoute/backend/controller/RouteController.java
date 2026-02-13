@@ -22,13 +22,13 @@ public class RouteController {
     @PostMapping("/safest")
     public RouteResponse getSafestRoute(@RequestBody RouteRequest request) {
 
-        // Calculate total risk score
+        
         double riskScore = riskEngineService.calculateRisk(request.getTime());
 
-        // Get breakdown factors
+        
         List<RiskBreakdown> breakdown = riskEngineService.getBreakdown(request.getTime());
 
-        // Decide risk level based on score
+        
         String riskLevel;
         if (riskScore >= 40) {
             riskLevel = "High";
@@ -38,7 +38,7 @@ public class RouteController {
             riskLevel = "Low";
         }
 
-        // Return structured response
+        
         return new RouteResponse(
                 "dummy_polyline_string",
                 riskScore,
