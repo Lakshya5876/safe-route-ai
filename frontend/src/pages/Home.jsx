@@ -12,7 +12,8 @@ import {
 
 import MapView from "../components/MapView";
 import GlobeScene from "../components/GlobeScene";
-import LocationInput from "../components/LocationInput"; // ✅ added
+import LocationInput from "../components/LocationInput";
+import { fetchSafeRoute } from "../services/api";
 
 export default function Home() {
   const [showMap, setShowMap] = useState(false);
@@ -21,10 +22,34 @@ export default function Home() {
   const [time, setTime] = useState("");
   const [travelMode, setTravelMode] = useState("DRIVING");
 
+  const [routeData, setRouteData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleRouteSearch() {
+    try {
+      setLoading(true);
+
+      // ⚠️ TEMP: Hardcoded coords (until geocoding added)
+      const response = await fetchSafeRoute({
+        origin: { lat: 28.6129, lng: 77.2295 },
+        destination: { lat: 28.6500, lng: 77.1900 },
+        time: time || "14:00",
+        mode: travelMode,
+      });
+
+      console.log("Backend response:", response);
+
+      setRouteData(response);
+      setShowMap(true);
+    } catch (error) {
+      console.error("API error:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div style={page}>
-      
-      {/* MAP LAYER */}
       <AnimatePresence>
         {showMap && (
           <motion.div
@@ -33,31 +58,29 @@ export default function Home() {
             exit={{ opacity: 0 }}
             style={{
               ...fullScreenLayer,
-              pointerEvents: "auto"
+              pointerEvents: "auto",
             }}
           >
-            <MapView />
+            <MapView route={routeData?.route} />
             <div style={mapOverlayFade} />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* CONTENT */}
       <div
         style={{
           ...contentWrapper,
           justifyContent: showMap ? "flex-start" : "center",
           paddingLeft: showMap ? "50px" : "0",
-          pointerEvents: "none"
+          pointerEvents: "none",
         }}
       >
-        {/* CARD */}
         <motion.div
           layout
           transition={{ duration: 0.6, ease: "circOut" }}
           style={{
             ...card,
-            pointerEvents: "auto"
+            pointerEvents: "auto",
           }}
         >
           <div style={header}>
@@ -71,7 +94,6 @@ export default function Home() {
           </div>
 
           <div style={form}>
-            {/* START LOCATION */}
             <div style={inputWrap}>
               <MapPin size={16} style={iconStyle} />
               <LocationInput
@@ -81,7 +103,6 @@ export default function Home() {
               />
             </div>
 
-            {/* DESTINATION */}
             <div style={inputWrap}>
               <Navigation size={16} style={iconStyle} />
               <LocationInput
@@ -91,7 +112,6 @@ export default function Home() {
               />
             </div>
 
-            {/* TIME */}
             <div style={inputWrap}>
               <Clock size={16} style={iconStyle} />
               <input
@@ -102,7 +122,6 @@ export default function Home() {
               />
             </div>
 
-            {/* MODE */}
             <div style={modeRow}>
               {["DRIVING", "WALKING", "BIKE"].map((m) => (
                 <button
@@ -127,13 +146,12 @@ export default function Home() {
               ))}
             </div>
 
-            <button style={cta} onClick={() => setShowMap(true)}>
-              Find Safest Route
+            <button style={cta} onClick={handleRouteSearch}>
+              {loading ? "Loading..." : "Find Safest Route"}
             </button>
           </div>
         </motion.div>
 
-        {/* GLOBE */}
         {!showMap && (
           <div style={globeSidePanel}>
             <GlobeScene />
@@ -211,7 +229,6 @@ const title = { fontSize: "20px", fontWeight: "bold", color: "white" };
 const subtitle = { fontSize: "12px", color: "#94a3b8" };
 
 const form = { display: "flex", flexDirection: "column", gap: "12px" };
-
 const inputWrap = { position: "relative" };
 
 const iconStyle = {
