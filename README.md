@@ -99,5 +99,3 @@ Request:
   "destination": "Karol Bagh Delhi",
   "time": "23:30"
 }
-  "time": "23:30"
-}
