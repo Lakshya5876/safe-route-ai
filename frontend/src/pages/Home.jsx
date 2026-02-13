@@ -14,6 +14,7 @@ import MapView from "../components/MapView";
 import GlobeScene from "../components/GlobeScene";
 import LocationInput from "../components/LocationInput";
 import { fetchSafeRoute } from "../services/api";
+import { geocodeLocation } from "../services/geocode";
 
 export default function Home() {
   const [showMap, setShowMap] = useState(false);
@@ -27,12 +28,24 @@ export default function Home() {
 
   async function handleRouteSearch() {
     try {
+      if (!origin || !destination) {
+        alert("Please enter both origin and destination.");
+        return;
+      }
+
       setLoading(true);
 
-      // ⚠️ TEMP: Hardcoded coords (until geocoding added)
+      // 🔹 1. Convert text → coordinates using Mapbox
+      const originCoords = await geocodeLocation(origin);
+      const destinationCoords = await geocodeLocation(destination);
+
+      console.log("Geocoded origin:", originCoords);
+      console.log("Geocoded destination:", destinationCoords);
+
+      // 🔹 2. Send coordinates to backend
       const response = await fetchSafeRoute({
-        origin: { lat: 28.6129, lng: 77.2295 },
-        destination: { lat: 28.6500, lng: 77.1900 },
+        origin: originCoords,
+        destination: destinationCoords,
         time: time || "14:00",
         mode: travelMode,
       });
@@ -41,8 +54,10 @@ export default function Home() {
 
       setRouteData(response);
       setShowMap(true);
+
     } catch (error) {
       console.error("API error:", error);
+      alert("Location not found or server error.");
     } finally {
       setLoading(false);
     }
@@ -51,7 +66,7 @@ export default function Home() {
   return (
     <div style={page}>
       <AnimatePresence>
-        {showMap && (
+        {showMap && routeData && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -61,7 +76,7 @@ export default function Home() {
               pointerEvents: "auto",
             }}
           >
-            <MapView route={routeData?.route} />
+            <MapView route={routeData.route} />
             <div style={mapOverlayFade} />
           </motion.div>
         )}
