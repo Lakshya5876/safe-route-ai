@@ -16,59 +16,47 @@ export default function MapView({ route }) {
       style: "mapbox://styles/mapbox/dark-v11",
       center: [77.209, 28.6139],
       zoom: 12,
-      attributionControl: false,
     });
-
-    mapRef.current.on("load", () => {
-      mapRef.current.resize();
-    });
-
-    return () => {
-      mapRef.current.remove();
-      mapRef.current = null;
-    };
-  }, []);
-
-  // Draw route when route changes
-  useEffect(() => {
-    if (!mapRef.current || !route || route.length === 0) return;
 
     const map = mapRef.current;
 
-    const geojson = {
-      type: "Feature",
-      geometry: {
-        type: "LineString",
-        coordinates: route,
-      },
+    map.on("load", () => {
+      if (route && route.length > 0) {
+        map.addSource("route", {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: route,
+            },
+          },
+        });
+
+        map.addLayer({
+          id: "route-line",
+          type: "line",
+          source: "route",
+          paint: {
+            "line-color": "#00ffa6",
+            "line-width": 4,
+          },
+        });
+
+        // auto zoom to route
+        const bounds = route.reduce(
+          (b, coord) => b.extend(coord),
+          new mapboxgl.LngLatBounds(route[0], route[0])
+        );
+
+        map.fitBounds(bounds, { padding: 50 });
+      }
+    });
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
     };
-
-    if (map.getSource("route")) {
-      map.getSource("route").setData(geojson);
-    } else {
-      map.addSource("route", {
-        type: "geojson",
-        data: geojson,
-      });
-
-      map.addLayer({
-        id: "route",
-        type: "line",
-        source: "route",
-        paint: {
-          "line-color": "#00ffa6",
-          "line-width": 5,
-        },
-      });
-    }
-
-    // Auto-fit route
-    const bounds = route.reduce(
-      (b, coord) => b.extend(coord),
-      new mapboxgl.LngLatBounds(route[0], route[0])
-    );
-
-    map.fitBounds(bounds, { padding: 80 });
   }, [route]);
 
   return (
