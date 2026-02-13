@@ -1,0 +1,130 @@
+[
+  {
+    "name": "Karol Bagh Snatching Cluster",
+    "latitude": 28.651,
+    "longitude": 77.19,
+    "radius": 0.8,
+    "baseRisk": 35,
+    "category": "theft"
+  },
+  {
+    "name": "Paharganj Tourist Crime Belt",
+    "latitude": 28.6448,
+    "longitude": 77.2167,
+    "radius": 0.8,
+    "baseRisk": 32,
+    "category": "theft"
+  },
+  {
+    "name": "Old Delhi Night Risk Zone",
+    "latitude": 28.6562,
+    "longitude": 77.241,
+    "radius": 0.8,
+    "baseRisk": 38,
+    "category": "assault"
+  },
+  {
+    "name": "Seelampur High Density Cluster",
+    "latitude": 28.6692,
+    "longitude": 77.267,
+    "radius": 0.8,
+    "baseRisk": 40,
+    "category": "theft"
+  },
+  {
+    "name": "Anand Vihar Transit Risk",
+    "latitude": 28.6469,
+    "longitude": 77.3155,
+    "radius": 0.8,
+    "baseRisk": 30,
+    "category": "theft"
+  },
+  {
+    "name": "Sarai Kale Khan ISBT Zone",
+    "latitude": 28.5896,
+    "longitude": 77.2518,
+    "radius": 0.8,
+    "baseRisk": 28,
+    "category": "accident_prone"
+  },
+  {
+    "name": "Govindpuri Assault Reports Zone",
+    "latitude": 28.5363,
+    "longitude": 77.2576,
+    "radius": 0.8,
+    "baseRisk": 34,
+    "category": "assault"
+  },
+  {
+    "name": "Sangam Vihar Informal Settlement",
+    "latitude": 28.4996,
+    "longitude": 77.2386,
+    "radius": 0.8,
+    "baseRisk": 37,
+    "category": "poor_lighting"
+  },
+  {
+    "name": "Hauz Khas Nightlife Risk",
+    "latitude": 28.5494,
+    "longitude": 77.2001,
+    "radius": 0.8,
+    "baseRisk": 29,
+    "category": "theft"
+  },
+  {
+    "name": "Connaught Place Dense Commercial",
+    "latitude": 28.6315,
+    "longitude": 77.2167,
+    "radius": 0.8,
+    "baseRisk": 22,
+    "category": "theft"
+  },
+  {
+    "name": "Lajpat Nagar Market Pickpocketing",
+    "latitude": 28.5677,
+    "longitude": 77.2436,
+    "radius": 0.8,
+    "baseRisk": 27,
+    "category": "theft"
+  },
+  {
+    "name": "Tilak Nagar Local Crime Cluster",
+    "latitude": 28.6365,
+    "longitude": 77.0926,
+    "radius": 0.8,
+    "baseRisk": 26,
+    "category": "theft"
+  },
+  {
+    "name": "Kashmere Gate Transport Hub",
+    "latitude": 28.6667,
+    "longitude": 77.2285,
+    "radius": 0.8,
+    "baseRisk": 30,
+    "category": "accident_prone"
+  },
+  {
+    "name": "Central Secretariat Secure Zone",
+    "latitude": 28.6143,
+    "longitude": 77.209,
+    "radius": 0.8,
+    "baseRisk": 5,
+    "category": "theft"
+  },
+  {
+    "name": "Chanakyapuri Diplomatic Enclave",
+    "latitude": 28.5983,
+    "longitude": 77.1886,
+    "radius": 0.8,
+    "baseRisk": 8,
+    "category": "theft"
+  },
+  {
+    "name": "Dwarka Planned Low Risk Zone",
+    "latitude": 28.5921,
+    "longitude": 77.046,
+    "radius": 0.8,
+    "baseRisk": 12,
+    "category": "poor_lighting"
+  }
+]

@@ -16,6 +16,56 @@ import LocationInput from "../components/LocationInput";
 import { fetchSafeRoute } from "../services/api";
 import { geocodeLocation } from "../services/geocode";
 
+function RouteInfoPanel({ routes = [], selectedRouteId, onSelectRoute, route }) {
+  if (!route) return null;
+  const safetyScore = Math.round(100 - (route.riskScore ?? 0));
+  const durationMin = Math.round((route.duration ?? 0) * 10) / 10;
+
+  return (
+    <motion.div
+      key={route.id}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      style={routeInfoPanel}
+    >
+      {routes.length > 1 && (
+        <div style={routeChipsWrap}>
+          <span style={routeChipsLabel}>Paths:</span>
+          {routes.map((r, i) => {
+            const score = Math.round(100 - (r.riskScore ?? 0));
+            const isSelected = r.id === selectedRouteId;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => onSelectRoute?.(r.id)}
+                style={{
+                  ...routeChip,
+                  ...(isSelected ? routeChipSelected : {}),
+                }}
+                title={`Path ${i + 1} – ${score}% safety`}
+              >
+                {i + 1} · {score}%
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div style={routeInfoRow}>
+        <span style={routeInfoLabel}>Safety score</span>
+        <span style={{ ...routeInfoValue, color: "#00ffa6" }}>{safetyScore}%</span>
+      </div>
+      <div style={routeInfoRow}>
+        <span style={routeInfoLabel}>Duration</span>
+        <span style={routeInfoValue}>{durationMin} min</span>
+      </div>
+      <p style={routeInfoDesc}>{route.description ?? ""}</p>
+    </motion.div>
+  );
+}
+
 export default function Home() {
   const [showMap, setShowMap] = useState(false);
   const [origin, setOrigin] = useState("");
@@ -25,6 +75,7 @@ export default function Home() {
 
   const [routeData, setRouteData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [selectedRouteId, setSelectedRouteId] = useState(null);
 
   async function handleRouteSearch() {
     try {
@@ -52,12 +103,32 @@ export default function Home() {
 
       console.log("Backend response:", response);
 
-      setRouteData(response);
+      if (!response.routes?.length) {
+        alert(response.error || "No route found between these points.");
+        setLoading(false);
+        return;
+      }
+
+      // Validate route data
+      const validRoutes = response.routes.filter(
+        (r) => r.coordinates && Array.isArray(r.coordinates) && r.coordinates.length >= 2
+      );
+
+      if (validRoutes.length === 0) {
+        alert("Routes received but coordinates are invalid.");
+        setLoading(false);
+        return;
+      }
+
+      setRouteData({ ...response, routes: validRoutes });
+      const primary = validRoutes.find((r) => r.primary);
+      setSelectedRouteId(primary?.id ?? validRoutes[0]?.id ?? null);
       setShowMap(true);
 
     } catch (error) {
-      console.error("API error:", error);
-      alert("Location not found or server error.");
+      console.error("Route error:", error);
+      const msg = error?.message || "Something went wrong.";
+      alert(msg);
     } finally {
       setLoading(false);
     }
@@ -76,8 +147,26 @@ export default function Home() {
               pointerEvents: "auto",
             }}
           >
-            <MapView route={routeData.route} />
+            <MapView
+              routes={routeData.routes ?? []}
+              selectedRouteId={selectedRouteId}
+              onSelectRoute={setSelectedRouteId}
+            />
             <div style={mapOverlayFade} />
+            {routeData.routes?.length > 0 && (
+              <AnimatePresence mode="wait">
+                <RouteInfoPanel
+                  routes={routeData.routes}
+                  selectedRouteId={selectedRouteId}
+                  onSelectRoute={setSelectedRouteId}
+                  route={
+                    routeData.routes.find((r) => r.id === selectedRouteId) ??
+                    routeData.routes.find((r) => r.primary) ??
+                    routeData.routes[0]
+                  }
+                />
+              </AnimatePresence>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -87,16 +176,13 @@ export default function Home() {
           ...contentWrapper,
           justifyContent: showMap ? "flex-start" : "center",
           paddingLeft: showMap ? "50px" : "0",
-          pointerEvents: "none",
+          width: showMap ? "fit-content" : undefined,
         }}
       >
         <motion.div
           layout
           transition={{ duration: 0.6, ease: "circOut" }}
-          style={{
-            ...card,
-            pointerEvents: "auto",
-          }}
+          style={card}
         >
           <div style={header}>
             <div style={logoBox}>
@@ -288,3 +374,52 @@ const cta = {
   cursor: "pointer",
   marginTop: "10px",
 };
+
+const routeInfoPanel = {
+  position: "absolute",
+  top: 24,
+  right: 24,
+  maxWidth: 320,
+  padding: "16px 20px",
+  borderRadius: 16,
+  background: "rgba(10, 20, 40, 0.92)",
+  backdropFilter: "blur(16px)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
+  zIndex: 20,
+  pointerEvents: "auto",
+};
+
+const routeChipsWrap = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: 6,
+  marginBottom: 12,
+};
+const routeChipsLabel = { fontSize: 11, color: "#94a3b8", marginRight: 4 };
+const routeChip = {
+  padding: "4px 10px",
+  borderRadius: 8,
+  border: "1px solid rgba(255,255,255,0.2)",
+  background: "rgba(255,255,255,0.06)",
+  color: "#94a3b8",
+  fontSize: 12,
+  cursor: "pointer",
+};
+const routeChipSelected = {
+  borderColor: "#00ffa6",
+  background: "rgba(0,255,166,0.15)",
+  color: "#00ffa6",
+};
+
+const routeInfoRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 8,
+};
+
+const routeInfoLabel = { fontSize: 12, color: "#94a3b8" };
+const routeInfoValue = { fontSize: 16, fontWeight: 600, color: "#fff" };
+const routeInfoDesc = { fontSize: 13, color: "#cbd5e1", margin: "8px 0 0", lineHeight: 1.4 };

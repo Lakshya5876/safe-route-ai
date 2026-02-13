@@ -1,0 +1,10 @@
+{
+  "name": "saferoute-pipeline",
+  "version": "1.0.0",
+  "description": "CSV to risk-zones JSON for SafeRoute Delhi",
+  "type": "module",
+  "scripts": {
+    "process": "node process-csv-to-zones.js",
+    "process:sample": "node process-csv-to-zones.js sample-delhi-crimes.csv"
+  }
+}
