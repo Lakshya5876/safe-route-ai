@@ -33,9 +33,10 @@ function RouteInfoPanel({ routes = [], selectedRouteId, onSelectRoute, route }) 
       {routes.length > 1 && (
         <div style={routeChipsWrap}>
           <span style={routeChipsLabel}>Paths:</span>
+          {/* Exactly routes.length buttons; no padding to 3 */}
           {routes.map((r, i) => {
-            const score = Math.round(100 - (r.riskScore ?? 0));
             const isSelected = r.id === selectedRouteId;
+            const score = Math.round(100 - (r.riskScore ?? 0));
             return (
               <button
                 key={r.id}
@@ -47,7 +48,7 @@ function RouteInfoPanel({ routes = [], selectedRouteId, onSelectRoute, route }) 
                 }}
                 title={`Path ${i + 1} – ${score}% safety`}
               >
-                {i + 1} · {score}%
+                Path {i + 1}
               </button>
             );
           })}
@@ -124,6 +125,7 @@ export default function Home() {
       const primary = validRoutes.find((r) => r.primary);
       setSelectedRouteId(primary?.id ?? validRoutes[0]?.id ?? null);
       setShowMap(true);
+      // Render exactly validRoutes.length path buttons; no hardcoded count, no duplication.
 
     } catch (error) {
       console.error("Route error:", error);
@@ -160,7 +162,7 @@ export default function Home() {
                   selectedRouteId={selectedRouteId}
                   onSelectRoute={setSelectedRouteId}
                   route={
-                    routeData.routes.find((r) => r.id === selectedRouteId) ??
+                    (selectedRouteId && routeData.routes.find((r) => r.id === selectedRouteId)) ??
                     routeData.routes.find((r) => r.primary) ??
                     routeData.routes[0]
                   }

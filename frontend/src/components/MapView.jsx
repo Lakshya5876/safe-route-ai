@@ -1,8 +1,13 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
+
+const BASE_WIDTH = 4;
+const SEGMENT_WIDTH = 6;
+const ACTIVE_COLOR = "#00ffa6";
+const INACTIVE_COLOR = "rgba(100, 200, 255, 0.7)";
 
 const SEGMENT_COLORS = {
   SAFE: "#22c55e",
@@ -11,249 +16,288 @@ const SEGMENT_COLORS = {
   HIGH: "#ef4444",
 };
 
+function segmentColor(riskLevel) {
+  return SEGMENT_COLORS[riskLevel] ?? SEGMENT_COLORS.SAFE;
+}
+
+// All ids keyed by route.id (string) for compatibility with Home selectedRouteId
+function routeSourceId(id) {
+  return `route-src-${id}`;
+}
+function routeBaseLayerId(id) {
+  return `route-base-${id}`;
+}
+function routeHitLayerId(id) {
+  return `route-hit-${id}`;
+}
+function segmentSourceId(routeId, segIndex) {
+  return `segment-src-${routeId}-${segIndex}`;
+}
+function segmentLayerId(routeId, segIndex) {
+  return `segment-${routeId}-${segIndex}`;
+}
+
+const PIN_START_SOURCE_ID = "route-pin-start-src";
+const PIN_START_LAYER_ID = "route-pin-start";
+const PIN_END_SOURCE_ID = "route-pin-end-src";
+const PIN_END_LAYER_ID = "route-pin-end";
+
 export default function MapView({ routes = [], selectedRouteId, onSelectRoute }) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const layersRef = useRef(new Set());
   const sourcesRef = useRef(new Set());
-  const animRef = useRef(null);
 
   const primaryId = routes.find((r) => r.primary)?.id ?? routes[0]?.id;
   const selectedId = selectedRouteId ?? primaryId;
   const selectedRoute = routes.find((r) => r.id === selectedId);
 
-  const removeRouteLayers = useCallback((map) => {
-    if (!map || !map.getStyle()) return;
-    layersRef.current.forEach((id) => {
-      if (map.getLayer(id)) map.removeLayer(id);
-    });
-    layersRef.current.clear();
-    sourcesRef.current.forEach((id) => {
-      if (map.getSource(id)) map.removeSource(id);
-    });
-    sourcesRef.current.clear();
-  }, []);
-
   useEffect(() => {
     if (mapRef.current) return;
-
-    if (!mapContainer.current) {
-      console.error("MapView: mapContainer ref is null");
-      return;
-    }
+    if (!mapContainer.current) return;
 
     mapRef.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/dark-v11",
-      center: [77.209, 28.6139],
-      zoom: 12,
+      center: [79.1559, 12.9692],
+      zoom: 14,
     });
 
     return () => {
-      if (animRef.current) cancelAnimationFrame(animRef.current);
       mapRef.current?.remove();
       mapRef.current = null;
     };
   }, []);
 
+  /**
+   * Single declarative effect: on routes or selectedRouteId change,
+   * remove ALL route/segment layers and sources, then re-add in strict order.
+   * Order (bottom to top): inactive bases (blue) → active base (green) → active segments (heat) → hit layers.
+   * No setPaintProperty. No partial updates. Color derived only from selectedRouteId.
+   */
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !routes.length) return;
 
-    if (!routes.length) {
-      removeRouteLayers(map);
-      return;
-    }
+    const run = () => {
+      const layersToRemove = [...layersRef.current];
+      const sourcesToRemove = [...sourcesRef.current];
+      layersToRemove.forEach((id) => {
+        if (map.getLayer(id)) map.removeLayer(id);
+      });
+      sourcesToRemove.forEach((id) => {
+        if (map.getSource(id)) map.removeSource(id);
+      });
+      layersRef.current.clear();
+      sourcesRef.current.clear();
 
-    const setup = () => {
-      try {
-        removeRouteLayers(map);
+      console.log("[MapView] full re-render, selectedRouteId:", selectedId);
 
-        let allBounds = null;
+      // 1) Add all sources (route geometry + segment geometry for active only)
+      routes.forEach((route) => {
+        if (!route.coordinates || route.coordinates.length < 2) return;
+        const sid = routeSourceId(route.id);
+        map.addSource(sid, {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            geometry: { type: "LineString", coordinates: route.coordinates },
+          },
+        });
+        sourcesRef.current.add(sid);
+      });
 
-        routes.forEach((route) => {
-          if (!route.coordinates || route.coordinates.length < 2) {
-            console.warn(`Route ${route.id} has invalid coordinates`);
-            return;
-          }
-
-          const sid = `src-${route.id}`;
-          const lid = `line-${route.id}`;
-          // Primary route always green; secondary is green only when selected
-          const isPrimary = route.primary === true;
-          const isSelected = route.id === selectedId;
-          const useGreen = isPrimary || isSelected;
-
-          // Remove existing source/layer if present
-          if (map.getLayer(lid)) map.removeLayer(lid);
-          if (map.getSource(sid)) map.removeSource(sid);
-
-          map.addSource(sid, {
+      if (selectedRoute?.segments?.length) {
+        selectedRoute.segments.forEach((seg, j) => {
+          if (!seg.coordinates || seg.coordinates.length < 2) return;
+          const segSrcId = segmentSourceId(selectedRoute.id, j);
+          map.addSource(segSrcId, {
             type: "geojson",
             data: {
               type: "Feature",
-              geometry: { type: "LineString", coordinates: route.coordinates },
+              geometry: { type: "LineString", coordinates: seg.coordinates },
             },
           });
-          sourcesRef.current.add(sid);
+          sourcesRef.current.add(segSrcId);
+        });
+      }
 
-          const hitLid = `hit-${route.id}`;
+      // 2) Add layers in draw order: inactive bases first, then active base, then active segments, then hits
+
+      // 2a) Inactive route bases (dull blue) – drawn first so they sit under active
+      routes.forEach((route) => {
+        if (!route.coordinates || route.coordinates.length < 2) return;
+        if (route.id === selectedId) return;
+
+        const lid = routeBaseLayerId(route.id);
+        map.addLayer({
+          id: lid,
+          type: "line",
+          source: routeSourceId(route.id),
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: {
+            "line-color": INACTIVE_COLOR,
+            "line-width": BASE_WIDTH,
+            "line-opacity": 1,
+          },
+        });
+        layersRef.current.add(lid);
+      });
+
+      // 2b) Active route base (green only) – never orange; orange is segment overlay only
+      if (selectedRoute?.coordinates?.length >= 2) {
+        const lid = routeBaseLayerId(selectedRoute.id);
+        map.addLayer({
+          id: lid,
+          type: "line",
+          source: routeSourceId(selectedRoute.id),
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: {
+            "line-color": ACTIVE_COLOR,
+            "line-width": BASE_WIDTH,
+            "line-opacity": 1,
+          },
+        });
+        layersRef.current.add(lid);
+      }
+
+      // 2c) Active route segment overlays (heat) – on top of active base; red/orange/yellow by risk
+      if (selectedRoute?.segments?.length) {
+        const riskDistribution = {};
+        selectedRoute.segments.forEach((seg, j) => {
+          if (!seg.coordinates || seg.coordinates.length < 2) return;
+          const level = seg.riskLevel ?? "SAFE";
+          riskDistribution[level] = (riskDistribution[level] || 0) + 1;
+
+          const segLid = segmentLayerId(selectedRoute.id, j);
           map.addLayer({
-            id: hitLid,
+            id: segLid,
             type: "line",
-            source: sid,
-            layout: { "line-join": "round", "line-cap": "round" },
-            paint: { "line-color": "transparent", "line-width": 20, "line-opacity": 0 },
-          });
-          layersRef.current.add(hitLid);
-          map.addLayer({
-            id: lid,
-            type: "line",
-            source: sid,
+            source: segmentSourceId(selectedRoute.id, j),
             layout: { "line-join": "round", "line-cap": "round" },
             paint: {
-              "line-color": useGreen ? "#00ffa6" : "rgba(100, 200, 255, 0.6)",
-              "line-width": useGreen ? 5 : 3,
-              "line-opacity": 0,
+              "line-color": segmentColor(level),
+              "line-width": SEGMENT_WIDTH,
+              "line-opacity": 0.95,
             },
           });
-          layersRef.current.add(lid);
-
-          const b = route.coordinates.reduce(
-            (bounds, coord) => {
-              if (Array.isArray(coord) && coord.length >= 2) {
-                return bounds.extend(coord);
-              }
-              return bounds;
-            },
-            new mapboxgl.LngLatBounds(route.coordinates[0], route.coordinates[0])
-          );
-          allBounds = allBounds ? allBounds.extend(b.getNorthWest()).extend(b.getSouthEast()) : b;
+          layersRef.current.add(segLid);
         });
-
-        if (allBounds) {
-          map.fitBounds(allBounds, { padding: 50 });
-        }
-
-        // Route draw animation (opacity fade-in)
-        if (animRef.current) cancelAnimationFrame(animRef.current);
-        const start = performance.now();
-        const duration = 800;
-        const animate = (time) => {
-          const t = Math.min((time - start) / duration, 1);
-          const ease = 1 - Math.pow(1 - t, 2);
-          routes.forEach((route) => {
-            const lid = `line-${route.id}`;
-            if (map.getLayer(lid)) {
-              const useGreen = route.primary || route.id === selectedId;
-              const base = useGreen ? 1 : 0.6;
-              map.setPaintProperty(lid, "line-opacity", ease * base);
-            }
-          });
-          if (t < 1) {
-            animRef.current = requestAnimationFrame(animate);
-          }
-        };
-        animRef.current = requestAnimationFrame(animate);
-      } catch (err) {
-        console.error("Error setting up routes:", err);
+        console.log("[MapView] active route segments:", selectedRoute.segments.length, "riskLevels:", riskDistribution);
+      } else {
+        console.log("[MapView] active route has no segments");
       }
+
+      // 2d) Hit areas for all routes (on top, for clicks)
+      routes.forEach((route) => {
+        if (!route.coordinates || route.coordinates.length < 2) return;
+        const hitLid = routeHitLayerId(route.id);
+        map.addLayer({
+          id: hitLid,
+          type: "line",
+          source: routeSourceId(route.id),
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-color": "transparent", "line-width": 20, "line-opacity": 0 },
+        });
+        layersRef.current.add(hitLid);
+      });
+
+      // 2e) Start and end pins for the active route (on top of everything)
+      if (selectedRoute?.coordinates?.length >= 2) {
+        const startCoord = selectedRoute.coordinates[0];
+        const endCoord = selectedRoute.coordinates[selectedRoute.coordinates.length - 1];
+        if (Array.isArray(startCoord) && startCoord.length >= 2) {
+          map.addSource(PIN_START_SOURCE_ID, {
+            type: "geojson",
+            data: {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: startCoord },
+            },
+          });
+          sourcesRef.current.add(PIN_START_SOURCE_ID);
+          map.addLayer({
+            id: PIN_START_LAYER_ID,
+            type: "circle",
+            source: PIN_START_SOURCE_ID,
+            paint: {
+              "circle-radius": 8,
+              "circle-color": "#ffffff",
+              "circle-stroke-width": 2,
+              "circle-stroke-color": "#6b7280",
+            },
+          });
+          layersRef.current.add(PIN_START_LAYER_ID);
+        }
+        if (Array.isArray(endCoord) && endCoord.length >= 2) {
+          map.addSource(PIN_END_SOURCE_ID, {
+            type: "geojson",
+            data: {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: endCoord },
+            },
+          });
+          sourcesRef.current.add(PIN_END_SOURCE_ID);
+          map.addLayer({
+            id: PIN_END_LAYER_ID,
+            type: "circle",
+            source: PIN_END_SOURCE_ID,
+            paint: {
+              "circle-radius": 10,
+              "circle-color": "#dc2626",
+              "circle-stroke-width": 2,
+              "circle-stroke-color": "#991b1b",
+            },
+          });
+          layersRef.current.add(PIN_END_LAYER_ID);
+        }
+      }
+
+      let allBounds = null;
+      routes.forEach((route) => {
+        if (!route.coordinates || route.coordinates.length < 2) return;
+        const b = route.coordinates.reduce(
+          (bounds, coord) => {
+            if (Array.isArray(coord) && coord.length >= 2) return bounds.extend(coord);
+            return bounds;
+          },
+          new mapboxgl.LngLatBounds(route.coordinates[0], route.coordinates[0])
+        );
+        allBounds = allBounds ? allBounds.extend(b.getNorthWest()).extend(b.getSouthEast()) : b;
+      });
+      if (allBounds) map.fitBounds(allBounds, { padding: 50 });
+
+      console.log("[MapView] layers:", layersRef.current.size, "sources:", sourcesRef.current.size);
     };
 
-    if (map.isStyleLoaded()) {
-      setup();
-    } else {
-      map.once("load", setup);
-    }
+    if (map.isStyleLoaded()) run();
+    else map.once("load", run);
 
     return () => {
-      if (animRef.current) cancelAnimationFrame(animRef.current);
-      removeRouteLayers(map);
+      layersRef.current.forEach((id) => {
+        if (map.getLayer(id)) map.removeLayer(id);
+      });
+      sourcesRef.current.forEach((id) => {
+        if (map.getSource(id)) map.removeSource(id);
+      });
+      layersRef.current.clear();
+      sourcesRef.current.clear();
     };
-  }, [routes, removeRouteLayers]);
+  }, [routes, selectedId]);
 
-  // When selection changes: primary always green; secondary green only when selected
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded() || !routes.length) return;
+    if (!map || !map.isStyleLoaded() || !routes.length || typeof onSelectRoute !== "function") return;
 
-    routes.forEach((route) => {
-      const lid = `line-${route.id}`;
-      if (!map.getLayer(lid)) return;
-      const useGreen = route.primary === true || route.id === selectedId;
-      map.setPaintProperty(lid, "line-color", useGreen ? "#00ffa6" : "rgba(100, 200, 255, 0.6)");
-      map.setPaintProperty(lid, "line-width", useGreen ? 5 : 3);
-      map.setPaintProperty(lid, "line-opacity", useGreen ? 1 : 0.6);
-    });
-  }, [selectedId, routes]);
+    const hitIds = routes.map((r) => routeHitLayerId(r.id));
+    const baseIds = routes.map((r) => routeBaseLayerId(r.id));
+    const layerIds = [...hitIds, ...baseIds];
 
-  // Segment heat (only for selected route)
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded() || !selectedRoute?.segments?.length) return;
-
-    const segSourceId = "segments-heat";
-    const segLayerId = "segments-heat-line";
-
-    if (map.getSource(segSourceId)) {
-      map.removeLayer(segLayerId);
-      map.removeSource(segSourceId);
-    }
-
-    const features = selectedRoute.segments.map((seg) => ({
-      type: "Feature",
-      properties: { riskLevel: seg.riskLevel },
-      geometry: { type: "LineString", coordinates: seg.coordinates },
-    }));
-
-    map.addSource(segSourceId, {
-      type: "geojson",
-      data: { type: "FeatureCollection", features },
-    });
-
-    map.addLayer({
-      id: segLayerId,
-      type: "line",
-      source: segSourceId,
-      layout: { "line-join": "round", "line-cap": "round" },
-      paint: {
-        "line-color": [
-          "match",
-          ["get", "riskLevel"],
-          "HIGH",
-          SEGMENT_COLORS.HIGH,
-          "MODERATE",
-          SEGMENT_COLORS.MODERATE,
-          "LOW",
-          SEGMENT_COLORS.LOW,
-          SEGMENT_COLORS.SAFE,
-        ],
-        "line-width": 6,
-        "line-opacity": 0.9,
-      },
-    });
-
-    return () => {
-      if (map.getLayer(segLayerId)) map.removeLayer(segLayerId);
-      if (map.getSource(segSourceId)) map.removeSource(segSourceId);
-    };
-  }, [selectedRoute]);
-
-  // Click to select route (query both hit and line layers so dull routes are easy to click)
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded() || !routes.length || !onSelectRoute) return;
-
-    const lineIds = routes.map((r) => `line-${r.id}`);
-    const hitIds = routes.map((r) => `hit-${r.id}`);
-    const layerIds = [...hitIds, ...lineIds];
     const handler = (e) => {
       const features = map.queryRenderedFeatures(e.point, { layers: layerIds });
-      if (features.length > 0) {
-        const layerId = features[0].layer.id;
-        const id = layerId.replace("line-", "").replace("hit-", "");
-        onSelectRoute(id);
-      }
+      if (features.length === 0) return;
+      const layerId = features[0].layer.id;
+      const m = layerId.match(/^route-(?:base|hit)-(.+)$/);
+      if (m) onSelectRoute(m[1]);
     };
     const cursorHandler = (e) => {
       const features = map.queryRenderedFeatures(e.point, { layers: layerIds });
@@ -271,12 +315,7 @@ export default function MapView({ routes = [], selectedRouteId, onSelectRoute })
   return (
     <div
       ref={mapContainer}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-      }}
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
     />
   );
 }

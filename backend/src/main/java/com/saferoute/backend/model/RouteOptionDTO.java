@@ -1,5 +1,7 @@
 package com.saferoute.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.util.List;
 
 public class RouteOptionDTO {
@@ -12,6 +14,10 @@ public class RouteOptionDTO {
     private String riskLevel;
     private String description;
     private boolean primary;
+
+    /** Used server-side for description generation; not sent to client. */
+    @JsonIgnore
+    private RouteRiskSummary riskSummary;
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -36,4 +42,7 @@ public class RouteOptionDTO {
 
     public boolean isPrimary() { return primary; }
     public void setPrimary(boolean primary) { this.primary = primary; }
+
+    public RouteRiskSummary getRiskSummary() { return riskSummary; }
+    public void setRiskSummary(RouteRiskSummary riskSummary) { this.riskSummary = riskSummary; }
 }

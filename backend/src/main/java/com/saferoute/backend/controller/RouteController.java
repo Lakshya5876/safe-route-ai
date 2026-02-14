@@ -5,12 +5,14 @@ import com.saferoute.backend.model.RouteRequest;
 import com.saferoute.backend.model.RouteRiskSummary;
 import com.saferoute.backend.service.ORSRoutingService;
 import com.saferoute.backend.service.RiskEngineService;
+import com.saferoute.backend.service.RouteDeduplicationService;
+import com.saferoute.backend.service.RouteDescriptionGenerator;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api")
@@ -19,58 +21,61 @@ public class RouteController {
 
     private final RiskEngineService riskEngineService;
     private final ORSRoutingService orsRoutingService;
+    private final RouteDeduplicationService routeDeduplicationService;
+    private final RouteDescriptionGenerator routeDescriptionGenerator;
 
     public RouteController(
             RiskEngineService riskEngineService,
-            ORSRoutingService orsRoutingService
+            ORSRoutingService orsRoutingService,
+            RouteDeduplicationService routeDeduplicationService,
+            RouteDescriptionGenerator routeDescriptionGenerator
     ) {
         this.riskEngineService = riskEngineService;
         this.orsRoutingService = orsRoutingService;
+        this.routeDeduplicationService = routeDeduplicationService;
+        this.routeDescriptionGenerator = routeDescriptionGenerator;
     }
 
     @PostMapping("/route")
     public ResponseEntity<Map<String, Object>> getRoute(
             @RequestBody RouteRequest request
     ) {
+        Map<String, Object> errBody = new HashMap<>();
+        errBody.put("routes", new ArrayList<>());
+
         if (request == null || request.getOrigin() == null || request.getDestination() == null) {
-            Map<String, Object> err = new HashMap<>();
-            err.put("routes", new ArrayList<>());
-            err.put("error", "Origin and destination are required.");
-            return ResponseEntity.badRequest().body(err);
+            errBody.put("error", "Origin and destination are required.");
+            return ResponseEntity.badRequest().body(errBody);
         }
 
-        List<ORSRoutingService.ORSRouteResult> orsRoutes =
-                orsRoutingService.getMultipleRoutes(
-                        request.getOrigin().getLat(),
-                        request.getOrigin().getLng(),
-                        request.getDestination().getLat(),
-                        request.getDestination().getLng()
-                );
-
-        if (orsRoutes.isEmpty()) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("routes", new ArrayList<>());
-            errorResponse.put("error", "No route found between these points.");
-            return ResponseEntity.ok().body(errorResponse);
-        }
-
-        // Step A: Confirm ORS returned distinct routes (no duplication before scoring)
-        for (int i = 0; i < orsRoutes.size(); i++) {
-            ORSRoutingService.ORSRouteResult r = orsRoutes.get(i);
-            int coordCount = r.coordinates != null ? r.coordinates.size() : 0;
-            String start = coordCount >= 1 ? String.format("%.4f,%.4f", r.coordinates.get(0).get(0), r.coordinates.get(0).get(1)) : "?";
-            String end = coordCount >= 1 ? String.format("%.4f,%.4f", r.coordinates.get(coordCount - 1).get(0), r.coordinates.get(coordCount - 1).get(1)) : "?";
-            System.out.printf("[ORS] route %d: coords=%d durationSec=%.0f start=%s end=%s%n", i, coordCount, r.durationSeconds, start, end);
-        }
-
+        String mode = request.getMode() != null ? request.getMode() : "DRIVING";
         String time = request.getTime() != null ? request.getTime() : "14:00";
+
+        List<ORSRoutingService.ORSRouteResult> orsRoutes;
+        try {
+            orsRoutes = orsRoutingService.getMultipleRoutes(
+                    request.getOrigin().getLat(),
+                    request.getOrigin().getLng(),
+                    request.getDestination().getLat(),
+                    request.getDestination().getLng(),
+                    mode
+            );
+        } catch (Exception e) {
+            errBody.put("error", "Routing service error. Please try again or check origin/destination.");
+            return ResponseEntity.ok().body(errBody);
+        }
+
+        if (orsRoutes == null || orsRoutes.isEmpty()) {
+            errBody.put("error", "No route found between these points for " + mode + ". Try different locations or mode.");
+            return ResponseEntity.ok().body(errBody);
+        }
 
         List<RouteOptionDTO> routeOptions = new ArrayList<>();
         int idx = 0;
         for (ORSRoutingService.ORSRouteResult ors : orsRoutes) {
             if (ors == null || ors.coordinates == null || ors.coordinates.size() < 2) continue;
             try {
-                RouteRiskSummary summary = riskEngineService.calculateRouteRiskWithSummary(ors.coordinates, time);
+                RouteRiskSummary summary = riskEngineService.calculateRouteRiskWithSummary(ors.coordinates, time, mode);
                 double durationMin = ors.durationSeconds / 60.0;
 
                 RouteOptionDTO dto = new RouteOptionDTO();
@@ -79,8 +84,8 @@ public class RouteController {
                 dto.setDuration(durationMin);
                 dto.setRiskScore(summary.getRiskScore());
                 dto.setRiskLevel(summary.getRiskLevel());
-                dto.setSegments(riskEngineService.getRouteSegments(ors.coordinates, time));
-                dto.setDescription(riskEngineService.buildRouteDescription(summary, durationMin));
+                dto.setSegments(riskEngineService.getRouteSegments(ors.coordinates, time, mode));
+                dto.setRiskSummary(summary);
                 dto.setPrimary(false);
                 routeOptions.add(dto);
                 idx++;
@@ -90,15 +95,38 @@ public class RouteController {
         }
 
         if (routeOptions.isEmpty()) {
-            Map<String, Object> err = new HashMap<>();
-            err.put("routes", new ArrayList<>());
-            err.put("error", "Could not process route data. Please try again.");
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(err);
+            errBody.put("error", "Could not process route data. Please try again.");
+            return ResponseEntity.ok().body(errBody);
+        }
+
+        routeOptions = routeDeduplicationService.filterDuplicateRoutes(routeOptions);
+        if (routeOptions.isEmpty()) {
+            errBody.put("error", "Could not process route data. Please try again.");
+            return ResponseEntity.ok().body(errBody);
         }
 
         routeOptions.sort(Comparator.comparingDouble(RouteOptionDTO::getRiskScore));
-        if (!routeOptions.isEmpty()) {
-            routeOptions.get(0).setPrimary(true);
+        routeOptions.get(0).setPrimary(true);
+
+        for (int i = 0; i < routeOptions.size(); i++) {
+            RouteOptionDTO dto = routeOptions.get(i);
+            dto.setId("route-" + i);
+        }
+
+        List<RouteRiskSummary> allSummaries = routeOptions.stream()
+                .map(RouteOptionDTO::getRiskSummary)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        for (int i = 0; i < routeOptions.size(); i++) {
+            RouteOptionDTO dto = routeOptions.get(i);
+            String desc = routeDescriptionGenerator.build(
+                    dto.getRiskSummary(),
+                    dto.getDuration(),
+                    dto.getSegments(),
+                    allSummaries,
+                    i
+            );
+            dto.setDescription(desc);
         }
 
         Map<String, Object> response = new HashMap<>();

@@ -42,25 +42,40 @@ public class RiskEngineService {
                             .mapToDouble(RiskZone::getBaseRisk)
                             .sum();
 
-            System.out.println("Risk data loaded: " + riskZones.size() + " zones");
+            System.out.println("[RiskEngine] Loaded " + riskZones.size() + " zones; maxPossibleRisk=" + maxPossibleRisk);
+            if (!riskZones.isEmpty()) {
+                RiskZone z = riskZones.get(0);
+                System.out.println("[RiskEngine] Zone sample: " + z.getName() + " lat=" + z.getLatitude() + " lng=" + z.getLongitude() + " radius=" + z.getRadius() + " (km) baseRisk=" + z.getBaseRisk());
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    /** Route risk using segment midpoints; path-length variation so different routes get different scores. */
+    /** Mode multiplier: exposure risk by travel mode. Applied at segment and route level. */
+    private static double modeMultiplier(String mode) {
+        if (mode == null) return 1.0;
+        return switch (mode.toUpperCase()) {
+            case "WALKING" -> 1.3;
+            case "BIKE" -> 1.15;
+            default -> 1.0; // DRIVING
+        };
+    }
+
     public double calculateRouteRisk(
             List<List<Double>> routeCoordinates,
-            String time
+            String time,
+            String mode
     ) {
-        RouteRiskSummary s = calculateRouteRiskWithSummary(routeCoordinates, time);
+        RouteRiskSummary s = calculateRouteRiskWithSummary(routeCoordinates, time, mode);
         return s != null ? s.getRiskScore() : 0;
     }
 
-    /** Full risk summary for one route: score, zones hit, length, time flags. Used for per-route description. */
+    /** Full risk summary for one route. Mode multiplier applied to zone component (not post-hoc). */
     public RouteRiskSummary calculateRouteRiskWithSummary(
             List<List<Double>> routeCoordinates,
-            String time
+            String time,
+            String mode
     ) {
         if (routeCoordinates == null || routeCoordinates.size() < 2) {
             RouteRiskSummary s = new RouteRiskSummary();
@@ -73,7 +88,9 @@ public class RiskEngineService {
             return s;
         }
 
-        // Step B: Multi-point sampling per segment so spatially distinct routes get different zone hits.
+        double modeMult = modeMultiplier(mode);
+
+        // Multi-point sampling per segment so spatially distinct routes get different zone hits.
         // Sample at t=0.25, 0.5, 0.75 along each segment (not just midpoint) so small geometry differences matter.
         Set<String> intersectedZones = new HashSet<>();
         double[] segmentSampleT = { 0.25, 0.5, 0.75 };
@@ -120,6 +137,7 @@ public class RiskEngineService {
             }
             totalZoneRisk += r;
         }
+        totalZoneRisk *= modeMult; // Mode multiplier at route aggregation (exposure: walking > bike > driving)
 
         double totalLengthKm = computeRouteLengthKm(routeCoordinates);
         int segmentCount = Math.max(0, routeCoordinates.size() - 1);
@@ -132,6 +150,7 @@ public class RiskEngineService {
         if (intersectedZones.isEmpty()) {
             zoneComponent += 18; // remote baseline
         }
+        // (mode already applied at totalZoneRisk; zoneComponent is derived from it)
 
         // Path-length exposure: different length → different score (no flattening)
         double lengthFactor = Math.min(15, totalLengthKm * 0.4);
@@ -148,18 +167,16 @@ public class RiskEngineService {
         double normalizedRisk = zoneComponent + lengthFactor + segmentFactor + timeModifier;
         normalizedRisk = Math.min(normalizedRisk, 100);
 
-        // Step C: Diagnostic – route risk formula (no compression; values vary by geometry/length)
-        System.out.printf("[RiskPipeline] route: coords=%d lengthKm=%.2f zonesHit=%d rawZoneRisk=%.1f zoneComp=%.1f lenFactor=%.1f segFactor=%.1f timeMod=%.0f -> riskScore=%.1f%n",
-                routeCoordinates.size(), totalLengthKm, intersectedZones.size(), totalZoneRisk, zoneComponent, lengthFactor, segmentFactor, timeModifier, normalizedRisk);
-
         if ("true".equalsIgnoreCase(System.getProperty("saferoute.debug.risk"))) {
+            System.out.printf("[RiskPipeline] route: coords=%d lengthKm=%.2f zonesHit=%d rawZoneRisk=%.1f zoneComp=%.1f lenFactor=%.1f segFactor=%.1f timeMod=%.0f -> riskScore=%.1f%n",
+                    routeCoordinates.size(), totalLengthKm, intersectedZones.size(), totalZoneRisk, zoneComponent, lengthFactor, segmentFactor, timeModifier, normalizedRisk);
             double maxSeg = 0, sumSeg = 0; int segN = 0;
             for (int i = 0; i < routeCoordinates.size() - 1 && i < 20; i++) {
                 List<Double> a = routeCoordinates.get(i), b = routeCoordinates.get(i + 1);
                 if (a == null || b == null || a.size() < 2 || b.size() < 2) continue;
                 double midLat = (toDouble(a.get(1)) + toDouble(b.get(1))) / 2;
                 double midLng = (toDouble(a.get(0)) + toDouble(b.get(0))) / 2;
-                double seg = segmentRiskScore(midLat, midLng, time);
+                double seg = segmentRiskScore(midLat, midLng, time, mode);
                 maxSeg = Math.max(maxSeg, seg); sumSeg += seg; segN++;
             }
             if (segN > 0) System.out.printf("[RiskPipeline] segmentRisk sample: max=%.1f avg=%.1f (first %d segments)%n", maxSeg, sumSeg / segN, segN);
@@ -237,13 +254,22 @@ public class RiskEngineService {
         return 0;
     }
 
-    /** Segment-level risk for one point (normalized 0–100). */
+    /** Segment-level risk for one point (normalized 0–100). Use overload with mode for mode-sensitive heat. */
     public double segmentRiskScore(double lat, double lng, String time) {
+        return segmentRiskScore(lat, lng, time, null);
+    }
+
+    /** Segment-level risk: zone overlap, distance-to-center (closer = higher), time, mode. */
+    public double segmentRiskScore(double lat, double lng, String time, String mode) {
         double totalZoneRisk = 0;
         for (RiskZone zone : riskZones) {
             double distance = haversine(lat, lng, zone.getLatitude(), zone.getLongitude());
-            if (distance <= zone.getRadius()) {
-                totalZoneRisk += zone.getBaseRisk();
+            double radiusKm = zone.getRadius();
+            if (radiusKm <= 0) continue;
+            if (distance <= radiusKm) {
+                // Intensity by distance to zone center: center = 2x, edge = 1x (visually varied heat)
+                double proximityFactor = 1.0 + (1.0 - distance / radiusKm);
+                totalZoneRisk += zone.getBaseRisk() * proximityFactor;
             }
         }
         double normalized = maxPossibleRisk > 0 ? (totalZoneRisk / maxPossibleRisk) * 100 : 0;
@@ -258,6 +284,7 @@ public class RiskEngineService {
                 }
             } catch (Exception ignored) {}
         }
+        normalized *= modeMultiplier(mode);
         return Math.min(normalized, 100);
     }
 
@@ -278,7 +305,8 @@ public class RiskEngineService {
 
     public List<RouteSegmentDTO> getRouteSegments(
             List<List<Double>> routeCoordinates,
-            String time
+            String time,
+            String mode
     ) {
         List<RouteSegmentDTO> segments = new ArrayList<>();
         if (routeCoordinates == null || routeCoordinates.size() < 2) {
@@ -294,7 +322,7 @@ public class RiskEngineService {
             double midLng = (a0 + b0) / 2;
             double midLat = (a1 + b1) / 2;
 
-            double score = segmentRiskScore(midLat, midLng, time);
+            double score = segmentRiskScore(midLat, midLng, time, mode);
             String riskLevel = scoreToRiskLevel(score);
 
             segments.add(new RouteSegmentDTO(

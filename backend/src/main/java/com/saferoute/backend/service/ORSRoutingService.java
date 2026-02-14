@@ -7,10 +7,13 @@ import org.springframework.http.*;
 
 import java.util.*;
 
+/**
+ * Routing only. Calls OpenRouteService with the correct profile per travel mode.
+ * Returns exactly what ORS returns (N routes). No padding, no duplication.
+ */
 @Service
 public class ORSRoutingService {
 
-    /** Single route result from ORS (coordinates + duration in seconds). */
     public static class ORSRouteResult {
         public List<List<Double>> coordinates;
         public double durationSeconds;
@@ -21,33 +24,49 @@ public class ORSRoutingService {
         }
     }
 
+    private static final int REQUEST_ALTERNATIVES_DEFAULT = 3;
+    private static final int REQUEST_ALTERNATIVES_DRIVING = 2;
+
+    /** ORS profile per travel mode. */
+    private static String profileForMode(String mode) {
+        if (mode == null) return "driving-car";
+        return switch (mode.toUpperCase()) {
+            case "WALKING" -> "foot-walking";
+            case "BIKE" -> "cycling-regular";
+            default -> "driving-car";
+        };
+    }
+
     @Value("${ors.api.key}")
     private String apiKey;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    /** Max alternatives to request from ORS (ORS may return fewer). */
-    private static final int REQUEST_ALTERNATIVES = 3;
-
     /**
-     * Return exactly what ORS provides. No padding, no via-waypoint fallback, no duplication.
-     * If ORS returns 1 route → 1 route. If 2 → 2. If 3 → 3.
+     * Return exactly what ORS provides for the given mode.
+     * DRIVING → driving-car, WALKING → foot-walking, BIKE → cycling-regular.
      */
     public List<ORSRouteResult> getMultipleRoutes(
             double originLat,
             double originLng,
             double destLat,
-            double destLng
+            double destLng,
+            String mode
     ) {
-        return requestAlternativesOrDirect(originLng, originLat, destLng, destLat);
+        String profile = profileForMode(mode);
+        int alternatives = (mode != null && "DRIVING".equalsIgnoreCase(mode))
+                ? REQUEST_ALTERNATIVES_DRIVING
+                : REQUEST_ALTERNATIVES_DEFAULT;
+        return requestDirections(originLng, originLat, destLng, destLat, profile, alternatives);
     }
 
-    /** Call ORS with alternative_routes; on failure or empty, get single direct route. Returns only what ORS gives. */
-    private List<ORSRouteResult> requestAlternativesOrDirect(
-            double originLng, double originLat, double destLng, double destLat
+    private List<ORSRouteResult> requestDirections(
+            double originLng, double originLat, double destLng, double destLat,
+            String profile,
+            int targetCount
     ) {
         try {
-            String url = "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
+            String url = "https://api.openrouteservice.org/v2/directions/" + profile + "/geojson";
             HttpHeaders headers = new HttpHeaders();
             headers.set("Authorization", apiKey);
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -63,7 +82,7 @@ public class ORSRoutingService {
                 "share_factor": 0.6
               }
             }
-            """.formatted(originLng, originLat, destLng, destLat, REQUEST_ALTERNATIVES);
+            """.formatted(originLng, originLat, destLng, destLat, targetCount);
 
             HttpEntity<String> entity = new HttpEntity<>(body, headers);
             ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
@@ -72,7 +91,7 @@ public class ORSRoutingService {
 
             List<Map<String, Object>> features = (List<Map<String, Object>>) responseBody.get("features");
             if (features == null || features.isEmpty()) {
-                return getSingleRouteFallback(originLat, originLng, destLat, destLng);
+                return requestSingleRoute(originLng, originLat, destLng, destLat, profile);
             }
 
             List<ORSRouteResult> results = new ArrayList<>();
@@ -82,9 +101,41 @@ public class ORSRoutingService {
             }
             return results;
         } catch (Exception e) {
-            System.out.println("ORS alternatives ERROR: " + e.getMessage() + " — trying single route.");
-            return getSingleRouteFallback(originLat, originLng, destLat, destLng);
+            System.out.println("ORS ERROR (" + profile + "): " + e.getMessage());
+            try {
+                return requestSingleRoute(originLng, originLat, destLng, destLat, profile);
+            } catch (Exception e2) {
+                System.out.println("ORS single-route fallback ERROR: " + e2.getMessage());
+                return Collections.emptyList();
+            }
         }
+    }
+
+    private List<ORSRouteResult> requestSingleRoute(
+            double originLng, double originLat, double destLng, double destLat,
+            String profile
+    ) {
+        String url = "https://api.openrouteservice.org/v2/directions/" + profile + "/geojson";
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", apiKey);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String body = """
+        {
+          "coordinates": [
+            [%f, %f],
+            [%f, %f]
+          ]
+        }
+        """.formatted(originLng, originLat, destLng, destLat);
+        HttpEntity<String> entity = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
+        Map<String, Object> responseBody = response.getBody();
+        if (responseBody == null) return Collections.emptyList();
+        List<Map<String, Object>> features = (List<Map<String, Object>>) responseBody.get("features");
+        if (features == null || features.isEmpty()) return Collections.emptyList();
+        ORSRouteResult r = parseFeature(features.get(0));
+        if (r != null) return new ArrayList<>(List.of(r));
+        return Collections.emptyList();
     }
 
     @SuppressWarnings("unchecked")
@@ -93,7 +144,6 @@ public class ORSRoutingService {
         Map<String, Object> geometry = (Map<String, Object>) feature.get("geometry");
         Map<String, Object> properties = (Map<String, Object>) feature.get("properties");
         if (geometry == null) return null;
-
         Object coordsObj = geometry.get("coordinates");
         if (!(coordsObj instanceof List)) return null;
         List<?> coordList = (List<?>) coordsObj;
@@ -125,52 +175,5 @@ public class ORSRoutingService {
         if (o instanceof Number) return ((Number) o).doubleValue();
         if (o != null) return Double.parseDouble(o.toString());
         return 0;
-    }
-
-    private List<ORSRouteResult> getSingleRouteFallback(
-            double originLat, double originLng, double destLat, double destLng
-    ) {
-        try {
-            String url =
-                    "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", apiKey);
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            String body = """
-            {
-              "coordinates": [
-                [%f, %f],
-                [%f, %f]
-              ]
-            }
-            """.formatted(originLng, originLat, destLng, destLat);
-            HttpEntity<String> entity = new HttpEntity<>(body, headers);
-            ResponseEntity<Map> response =
-                    restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
-            Map<String, Object> responseBody = response.getBody();
-            if (responseBody == null) return Collections.emptyList();
-            List<Map<String, Object>> features =
-                    (List<Map<String, Object>>) responseBody.get("features");
-            if (features == null || features.isEmpty()) return Collections.emptyList();
-
-            ORSRouteResult r = parseFeature(features.get(0));
-            if (r != null) return new ArrayList<>(List.of(r));
-            return new ArrayList<>();
-        } catch (Exception e2) {
-            System.out.println("ORS single route ERROR: " + e2.getMessage());
-            return Collections.emptyList();
-        }
-    }
-
-    /** Legacy: single route (first of alternatives). */
-    public List<List<Double>> getRouteCoordinates(
-            double originLat,
-            double originLng,
-            double destLat,
-            double destLng
-    ) {
-        List<ORSRouteResult> routes = getMultipleRoutes(originLat, originLng, destLat, destLng);
-        if (routes.isEmpty()) return Collections.emptyList();
-        return routes.get(0).coordinates;
     }
 }
