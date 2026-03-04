@@ -42,7 +42,7 @@ The system returns:
 
 ### Planned Integrations
 
-* Google Directions API
+* Open Route Service API
 * Polyline decoding for route segmentation
 * Spatial datasets for crime mapping
 
