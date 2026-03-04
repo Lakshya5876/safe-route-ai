@@ -1,101 +1,218 @@
 # SafeRoute AI
 
-Context-Aware Navigation Focused on Urban Safety
+**Context-Aware Navigation Focused on Urban Safety**
+
+## Overview
+
+SafeRoute AI is a backend system that evaluates the **safety of navigation routes** using contextual risk signals.
+
+Most navigation systems optimize only for **speed and traffic efficiency**.
+SafeRoute introduces a **risk scoring engine** that evaluates routes based on safety indicators such as:
+
+* crime cluster proximity
+* isolated road segments
+* time-of-day vulnerability
+* user safety preferences
+
+Instead of predicting crime, SafeRoute aggregates contextual risk factors and computes a **transparent safety score** for each route.
+
+The system returns:
+
+* Total Risk Score
+* Risk Level (Low / Moderate / High)
+* Risk Factor Breakdown
 
 ---
 
-## Problem
+## Tech Stack
 
-Modern navigation systems optimize for speed and traffic efficiency.  
-They do not account for contextual safety risks such as:
+### Backend
 
-- Crime density clusters
-- Late-night vulnerability
-- Isolated road segments
-- User safety preference
+* Java
+* Spring Boot
+* REST API architecture
 
-Urban mobility tools answer: “How fast can I get there?”  
-SafeRoute asks: “How safely can I get there?”
+### Frontend
 
----
+* React (UI prototype)
 
-## Solution
+### Data Layer
 
-SafeRoute AI is a safety-aware routing system that evaluates routes using a structured risk scoring engine.
+* JSON-based geo-risk dataset
 
-Instead of predicting crime, the system aggregates contextual risk factors and computes a transparent safety score for each route.
+### Planned Integrations
 
-The output includes:
-
-- Total Risk Score
-- Risk Level (Low / Moderate / High)
-- Factor-wise Risk Breakdown
+* Google Directions API
+* Polyline decoding for route segmentation
+* Spatial datasets for crime mapping
 
 ---
 
-## Architecture Overview
+## Key Features
 
-Frontend:
-- React-based user interface
-- Route input and safety controls
-- Map visualization layer (in progress)
+* Safety-aware route evaluation
+* Deterministic risk scoring engine
+* Time-of-day risk multiplier
+* Geo-zone risk detection
+* Risk classification system
+* Modular architecture for future data-driven models
 
-Backend:
-- Spring Boot REST API
-- Layered architecture (Controller → Service → Model)
-- Risk scoring engine (RiskEngineService)
+---
 
-Data Layer:
-- Curated geo-risk dataset (JSON prototype)
-- Designed for future GIS-based ingestion
+## System Architecture
 
-External Integration:
-- Google Directions API (planned)
-- Polyline decoding for route-segment scoring (planned)
+```
+User Request
+     ↓
+React Frontend
+     ↓
+Spring Boot REST API
+     ↓
+RiskEngineService
+     ↓
+Geo-Risk Dataset
+     ↓
+Safety Score Response
+```
+
+Architecture follows a **layered backend structure**:
+
+```
+Controller → Service → Model → Data
+```
 
 ---
 
 ## Core Risk Engine
 
-When a request is made:
+When a route safety request is made:
 
-1. Route is retrieved via Directions API
-2. Route is decoded into coordinate points
+1. Route is retrieved via the Directions API *(planned)*
+2. Route polyline is decoded into coordinate points
 3. Each coordinate is evaluated against geo-risk zones
-4. Time-of-day multiplier is applied
-5. Final safety score is computed
-6. Risk classification and breakdown are returned
+4. Time-of-day multiplier adjusts risk score
+5. Final route safety score is computed
+6. Risk classification and factor breakdown are returned
 
-The engine is deterministic and modular, allowing future transition to data-driven weighting.
-
----
-
-## Prototype Data Strategy
-
-For the hackathon prototype:
-
-- Risk zones are curated using publicly available crime cluster reports
-- Each zone is defined by latitude, longitude, radius, and base risk score
-- Relative scoring demonstrates framework functionality
-
-Production version would integrate:
-
-- Public crime GIS datasets (NCRB, state dashboards)
-- OpenStreetMap metadata
-- Spatial database (e.g., PostGIS)
-- Crowd-sourced risk signals
+The risk engine is **deterministic and modular**, allowing future upgrades to machine learning based weighting.
 
 ---
 
-## API Endpoint
+## Example API Endpoint
 
-POST  
-`/api/route/safest`
+### POST
 
-Request:
+```
+/api/route/safest
+```
+
+### Request
+
 ```json
 {
   "origin": "India Gate Delhi",
   "destination": "Karol Bagh Delhi",
   "time": "23:30"
 }
+```
+
+### Example Response
+
+```json
+{
+  "riskScore": 42,
+  "riskLevel": "Moderate",
+  "factors": {
+    "crimeCluster": 20,
+    "timeOfDay": 15,
+    "isolation": 7
+  }
+}
+```
+
+---
+
+## Prototype Data Strategy
+
+For the prototype version:
+
+* Risk zones are manually curated from publicly available crime cluster reports
+* Each zone contains:
+
+```
+latitude
+longitude
+radius
+base risk score
+```
+
+This demonstrates the framework for **route safety scoring**.
+
+Future versions will integrate:
+
+* NCRB crime GIS datasets
+* OpenStreetMap metadata
+* Spatial databases (PostGIS)
+* Crowd-sourced safety signals
+
+---
+
+## Project Structure
+
+```
+src
+ ├─ controller
+ │   └─ RouteController
+ ├─ service
+ │   └─ RiskEngineService
+ ├─ model
+ ├─ data
+ │   └─ riskZones.json
+ └─ config
+```
+
+---
+
+## Running the Project
+
+### 1. Clone repository
+
+```
+git clone https://github.com/your-username/SafeRoute-AI.git
+```
+
+### 2. Navigate to project
+
+```
+cd SafeRoute-AI
+```
+
+### 3. Run Spring Boot server
+
+```
+mvn spring-boot:run
+```
+
+Server starts on:
+
+```
+http://localhost:8080
+```
+
+---
+
+## Future Improvements
+
+* Integration with Google Directions API
+* Polyline decoding for route segment scoring
+* PostGIS spatial database support
+* Machine learning risk weighting
+* Real-time crowd-sourced safety signals
+
+---
+
+Contributors
+
+Lakshya
+
+Vinod Prajapati
