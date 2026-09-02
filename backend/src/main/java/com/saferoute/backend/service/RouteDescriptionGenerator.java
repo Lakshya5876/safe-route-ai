@@ -7,26 +7,15 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 /**
- * Score-aware narrative generator. Uses continuous risk, duration, comparison context,
- * and segment variance/spikes to produce distinct, analytical descriptions (no crude if/else bands).
+ * Builds a human-readable explanation of a route's score. Rewritten against
+ * the new coherent risk model: there are no more named "zones" (the old
+ * model's 16 hand-typed circles), so this now explains risk, confidence, and
+ * data coverage — including explicitly saying so when data is too sparse to
+ * trust the score, which the old version never did.
  */
 @Service
 public class RouteDescriptionGenerator {
 
-    private static double numericRisk(String level) {
-        if (level == null) return 20;
-        return switch (level.toUpperCase()) {
-            case "HIGH" -> 82;
-            case "MODERATE" -> 55;
-            case "LOW" -> 32;
-            default -> 15; // SAFE
-        };
-    }
-
-    /**
-     * Build a context-aware description from risk score, duration, segment distribution,
-     * and comparison with other routes. Descriptions differ by route and reflect tradeoffs.
-     */
     public String build(
             RouteRiskSummary summary,
             double durationMin,
@@ -35,78 +24,51 @@ public class RouteDescriptionGenerator {
             int thisIndex
     ) {
         if (summary == null) return "Route overview.";
-        double risk = summary.getRiskScore();
-        int zoneCount = summary.getZoneNames() != null ? summary.getZoneNames().size() : 0;
+        StringBuilder sb = new StringBuilder();
 
+        if ("UNKNOWN".equals(summary.getRiskLevel()) || "insufficient".equals(summary.getCoverageTier())) {
+            sb.append("Insufficient safety data for this area — risk score is not meaningful here.");
+            sb.append(" ~").append(String.format("%.0f", durationMin)).append(" min.");
+            return sb.toString();
+        }
+
+        double risk = summary.getRiskScore();
         double minRisk = allSummaries.stream().mapToDouble(RouteRiskSummary::getRiskScore).min().orElse(risk);
         double maxRisk = allSummaries.stream().mapToDouble(RouteRiskSummary::getRiskScore).max().orElse(risk);
         long saferCount = allSummaries.stream().filter(s -> s.getRiskScore() < risk).count();
         boolean isSafest = risk <= minRisk;
         boolean isRiskiest = risk >= maxRisk;
 
-        double segmentVariance = 0;
-        double maxSegmentRisk = 0;
-        double avgSegmentRisk = 0;
-        if (segments != null && !segments.isEmpty()) {
-            double[] nums = segments.stream()
-                    .mapToDouble(s -> numericRisk(s.getRiskLevel()))
-                    .toArray();
-            avgSegmentRisk = java.util.Arrays.stream(nums).average().orElse(0);
-            maxSegmentRisk = java.util.Arrays.stream(nums).max().orElse(0);
-            double avg = avgSegmentRisk;
-            segmentVariance = java.util.Arrays.stream(nums).map(x -> (x - avg) * (x - avg)).average().orElse(0);
-        }
-        boolean hasSpike = maxSegmentRisk > avgSegmentRisk + 25;
-        boolean consistentRisk = segmentVariance < 200 && !hasSpike;
-
-        StringBuilder sb = new StringBuilder();
-
-        // Overall exposure (proportional to score band without fixed thresholds)
         double safetyPct = Math.max(0, 100 - risk);
-        if (safetyPct >= 75) {
-            sb.append("Low overall exposure.");
-        } else if (safetyPct >= 55) {
-            sb.append("Moderate overall exposure.");
-        } else if (safetyPct >= 35) {
-            sb.append("Elevated exposure; some higher-risk segments.");
+        if (safetyPct >= 70) {
+            sb.append("Low relative risk for this city.");
+        } else if (safetyPct >= 45) {
+            sb.append("Moderate relative risk.");
         } else {
-            sb.append("Higher overall exposure; consider alternatives if possible.");
+            sb.append("Elevated relative risk; consider alternatives if available.");
         }
 
-        // Comparison context
         if (allSummaries.size() > 1) {
             if (isSafest) {
-                sb.append(" This is the safest option among ").append(allSummaries.size()).append(" routes.");
+                sb.append(" Safest of ").append(allSummaries.size()).append(" options.");
             } else if (isRiskiest) {
-                sb.append(" This route scores highest risk of the ").append(allSummaries.size()).append(" options.");
+                sb.append(" Highest risk of the ").append(allSummaries.size()).append(" options.");
             } else {
-                sb.append(" ").append((int) saferCount).append(" route(s) have lower risk.");
+                sb.append(" ").append((int) saferCount).append(" option(s) score lower risk.");
             }
         }
 
-        // Zone context
-        if (zoneCount > 0) {
-            sb.append(" Passes ").append(zoneCount).append(" known risk zone(s)");
-            if (summary.getZoneCategories() != null && !summary.getZoneCategories().isEmpty()) {
-                sb.append(" (").append(String.join(", ", summary.getZoneCategories())).append(")");
-            }
-            sb.append(".");
-        } else {
-            sb.append(" No known risk zones on this path.");
+        switch (summary.getCoverageTier()) {
+            case "high" -> sb.append(" Based on good local data coverage.");
+            case "moderate" -> sb.append(" Based on moderate local data coverage.");
+            case "sparse" -> sb.append(" Local data coverage is sparse — treat this score as approximate.");
+            default -> sb.append(" Data coverage is very limited here — treat this score cautiously.");
         }
 
-        // Segment character: spikes vs consistent
-        if (hasSpike && segments != null && segments.size() > 3) {
-            sb.append(" One or more segments show concentrated risk.");
-        } else if (consistentRisk && segments != null && segments.size() > 2) {
-            sb.append(" Risk is relatively even along the path.");
-        }
-
-        // Time
         if (summary.isNightTravel()) {
-            sb.append(" Night travel: assault and lighting risk elevated.");
+            sb.append(" Night travel: lighting and isolation risk weighted higher.");
         } else if (summary.isEveningTravel()) {
-            sb.append(" Evening: slightly elevated risk.");
+            sb.append(" Evening: lighting and isolation risk weighted slightly higher.");
         }
 
         sb.append(" ~").append(String.format("%.0f", durationMin)).append(" min.");

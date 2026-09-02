@@ -1,0 +1,8 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Root-level accidental artifacts (project's real deps live in backend/, frontend/, pipeline/)
+/node_modules/

@@ -60,6 +60,76 @@ public class ORSRoutingService {
         return requestDirections(originLng, originLat, destLng, destLat, profile, alternatives);
     }
 
+    /**
+     * Request a single route that actively avoids a small area around
+     * (avoidLat, avoidLng) — the highest-risk point found on a prior
+     * candidate — using ORS's real `options.avoid_polygons` request field.
+     * This is what turns SafeRoute from a pure re-ranker of ORS's own
+     * time-optimized alternatives into something that can ask the routing
+     * provider for a genuinely different, risk-motivated path. Returns an
+     * empty list (never throws) if ORS can't find a way around the area —
+     * that's a legitimate outcome (e.g. the avoided area is unavoidable),
+     * not a failure the caller needs to special-case.
+     */
+    public List<ORSRouteResult> getRouteAvoidingArea(
+            double originLat, double originLng,
+            double destLat, double destLng,
+            String mode,
+            double avoidLat, double avoidLng, double avoidRadiusMeters
+    ) {
+        String profile = profileForMode(mode);
+        try {
+            String url = "https://api.openrouteservice.org/v2/directions/" + profile + "/geojson";
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", apiKey);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            double[][] ring = squarePolygon(avoidLat, avoidLng, avoidRadiusMeters);
+            StringBuilder coordsJson = new StringBuilder();
+            for (double[] pt : ring) {
+                if (coordsJson.length() > 0) coordsJson.append(",");
+                coordsJson.append(String.format("[%f,%f]", pt[1], pt[0])); // [lng,lat]
+            }
+
+            String body = """
+            {
+              "coordinates": [[%f, %f], [%f, %f]],
+              "options": {
+                "avoid_polygons": {
+                  "type": "Polygon",
+                  "coordinates": [[%s]]
+                }
+              }
+            }
+            """.formatted(originLng, originLat, destLng, destLat, coordsJson);
+
+            HttpEntity<String> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
+            Map<String, Object> responseBody = response.getBody();
+            if (responseBody == null) return Collections.emptyList();
+            List<Map<String, Object>> features = (List<Map<String, Object>>) responseBody.get("features");
+            if (features == null || features.isEmpty()) return Collections.emptyList();
+            ORSRouteResult r = parseFeature(features.get(0));
+            return r != null ? new ArrayList<>(List.of(r)) : Collections.emptyList();
+        } catch (Exception e) {
+            System.out.println("ORS avoidance-route ERROR (" + profile + "): " + e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /** A small square ring (5 points, closed) around a center point, in [lat,lng] pairs. */
+    private static double[][] squarePolygon(double lat, double lng, double radiusMeters) {
+        double dLat = radiusMeters / 111320.0;
+        double dLng = radiusMeters / (111320.0 * Math.cos(Math.toRadians(lat)));
+        return new double[][] {
+                { lat - dLat, lng - dLng },
+                { lat - dLat, lng + dLng },
+                { lat + dLat, lng + dLng },
+                { lat + dLat, lng - dLng },
+                { lat - dLat, lng - dLng },
+        };
+    }
+
     private List<ORSRouteResult> requestDirections(
             double originLng, double originLat, double destLng, double destLat,
             String profile,

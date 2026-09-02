@@ -1,218 +1,123 @@
 # SafeRoute AI
 
-**Context-Aware Navigation Focused on Urban Safety**
+**Risk-aware route comparison for six Indian cities — Delhi, Mumbai, Bengaluru, Hyderabad, Pune, Chennai.**
 
-## Overview
+SafeRoute generates route candidates for driving, walking, and cycling, and
+scores each one for safety using a real, versioned, per-city risk grid built
+from live geospatial data — not hand-typed "risk zones." It runs entirely
+locally: no cloud services, no paid APIs beyond the free tiers of
+OpenRouteService (routing) and Mapbox (maps/geocoding), both of which you
+configure with your own free API keys.
 
-SafeRoute AI is a backend system that evaluates the **safety of navigation routes** using contextual risk signals.
+This README describes what the system **actually does**, verified against the
+running code — see `pipeline/README.md` for the data pipeline and the
+project engineering report for the full risk-model derivation and test
+results.
 
-Most navigation systems optimize only for **speed and traffic efficiency**.
-SafeRoute introduces a **risk scoring engine** that evaluates routes based on safety indicators such as:
-
-* crime cluster proximity
-* isolated road segments
-* time-of-day vulnerability
-* user safety preferences
-
-Instead of predicting crime, SafeRoute aggregates contextual risk factors and computes a **transparent safety score** for each route.
-
-The system returns:
-
-* Total Risk Score
-* Risk Level (Low / Moderate / High)
-* Risk Factor Breakdown
-
----
-
-## Tech Stack
-
-### Backend
-
-* Java
-* Spring Boot
-* REST API architecture
-
-### Frontend
-
-* React (UI prototype)
-
-### Data Layer
-
-* JSON-based geo-risk dataset
-
-### Planned Integrations
-
-* Open Route Service API
-* Polyline decoding for route segmentation
-* Spatial datasets for crime mapping
-
----
-
-## Key Features
-
-* Safety-aware route evaluation
-* Deterministic risk scoring engine
-* Time-of-day risk multiplier
-* Geo-zone risk detection
-* Risk classification system
-* Modular architecture for future data-driven models
-
----
-
-## System Architecture
+## How it works
 
 ```
-User Request
-     ↓
-React Frontend
-     ↓
-Spring Boot REST API
-     ↓
-RiskEngineService
-     ↓
-Geo-Risk Dataset
-     ↓
-Safety Score Response
+Origin + destination + mode + city
+        │
+        ▼
+OpenRouteService (routing candidates)
+        │
+        ▼
+RiskModelService: each candidate scored against that city's precomputed
+risk grid (spatial kernel density over real OSM lighting/isolation/
+protective-amenity data + a documented, honestly-sourced city crime prior)
+        │
+        ├─ if the best candidate crosses a confirmed high-risk point,
+        │  one more ORS request actively routes AROUND that area
+        ▼
+Deduplication (Hausdorff-style path comparison) → Pareto-optimal marking
+(risk vs. duration) → a bounded-tradeoff primary recommendation
+        │
+        ▼
+JSON response: routes[] with riskScore, confidence, data-coverage tier,
+Pareto flag, and a segment-by-segment color-coded breakdown
+        │
+        ▼
+React + Mapbox frontend
 ```
 
-Architecture follows a **layered backend structure**:
+## Data
 
-```
-Controller → Service → Model → Data
-```
+- **OpenStreetMap** (via the Overpass API, live, free, no key): real, per-city
+  lighting/isolation/protective-amenity features. © OpenStreetMap
+  contributors, ODbL license.
+- **NCRB "Crime in India"**: a city-level crime severity prior. Delhi's is a
+  verified, cited figure; the other five cities carry an explicitly-flagged
+  unverified neutral placeholder rather than an invented number (India does
+  not publish geocoded incident-level crime data). See `pipeline/README.md`
+  and `pipeline/src/cities.js` for full citations.
 
----
+## Risk model, in one paragraph
 
-## Core Risk Engine
+Each city is tiled into ~150m cells. Every risk factor contributes to nearby
+cells through a distance-decay kernel (not a hard-edged circle), kept
+separate by category so time-of-day can be recombined at request time.
+Normalization divides by that city's own 95th-percentile cell risk — not a
+sum across every city ever loaded, which was a bug in an earlier version of
+this project that made adding a new city silently change every existing
+city's scores. Routes are scored by resampling at a fixed arc-length step
+(not by vertex count, which biased scores toward geometrically dense
+stretches) and averaging risk by distance traveled — the same numbers drive
+both the map's segment coloring and the route ranking, which previously used
+two different, inconsistent formulas. Confidence is derived from real local
+OSM feature density, not fabricated; an area with no data is reported as
+low-confidence, never as "safe by default."
 
-When a route safety request is made:
+## Running locally
 
-1. Route is retrieved via the Directions API *(planned)*
-2. Route polyline is decoded into coordinate points
-3. Each coordinate is evaluated against geo-risk zones
-4. Time-of-day multiplier adjusts risk score
-5. Final route safety score is computed
-6. Risk classification and factor breakdown are returned
+Requires: Java 21+, Maven, Node 18+, a free [OpenRouteService API key](https://openrouteservice.org/dev/#/signup), and a free [Mapbox token](https://account.mapbox.com/).
 
-The risk engine is **deterministic and modular**, allowing future upgrades to machine learning based weighting.
+```bash
+# 1. Build the risk grids (only needed once, or when you want fresher OSM data)
+cd pipeline
+npm install
+npm run build
 
----
-
-## Example API Endpoint
-
-### POST
-
-```
-/api/route/safest
-```
-
-### Request
-
-```json
-{
-  "origin": "India Gate Delhi",
-  "destination": "Karol Bagh Delhi",
-  "time": "23:30"
-}
-```
-
-### Example Response
-
-```json
-{
-  "riskScore": 42,
-  "riskLevel": "Moderate",
-  "factors": {
-    "crimeCluster": 20,
-    "timeOfDay": 15,
-    "isolation": 7
-  }
-}
-```
-
----
-
-## Prototype Data Strategy
-
-For the prototype version:
-
-* Risk zones are manually curated from publicly available crime cluster reports
-* Each zone contains:
-
-```
-latitude
-longitude
-radius
-base risk score
-```
-
-This demonstrates the framework for **route safety scoring**.
-
-Future versions will integrate:
-
-* NCRB crime GIS datasets
-* OpenStreetMap metadata
-* Spatial databases (PostGIS)
-* Crowd-sourced safety signals
-
----
-
-## Project Structure
-
-```
-src
- ├─ controller
- │   └─ RouteController
- ├─ service
- │   └─ RiskEngineService
- ├─ model
- ├─ data
- │   └─ riskZones.json
- └─ config
-```
-
----
-
-## Running the Project
-
-### 1. Clone repository
-
-```
-git clone https://github.com/your-username/SafeRoute-AI.git
-```
-
-### 2. Navigate to project
-
-```
-cd SafeRoute-AI
-```
-
-### 3. Run Spring Boot server
-
-```
+# 2. Configure and start the backend
+cd ../backend
+cp .env.example .env   # then edit .env with your real ORS_API_KEY
+export ORS_API_KEY=your-real-key-here   # or use your shell/IDE's env support
 mvn spring-boot:run
+
+# 3. Configure and start the frontend (in a second terminal)
+cd ../frontend
+npm install
+echo "VITE_MAPBOX_TOKEN=your-real-mapbox-token" > .env
+npm run dev
 ```
 
-Server starts on:
+Then open http://localhost:5173, pick one of the six supported cities, enter
+an origin and destination within it, and choose driving/walking/cycling.
+
+## Tests
+
+```bash
+cd pipeline && npm test      # 26 tests: schema validation, OSM adapter, reproducibility
+cd backend && mvn test       # 33 tests: risk math, dedup, Pareto selection, mocked-ORS integration, performance
+```
+
+## What this is not
+
+Not a crime-prediction system, and not a claim of prediction accuracy — there
+is no incident-level ground truth publicly available in India to validate
+against. It is an honestly-sourced, explainable risk **exposure** estimate
+with explicit confidence and data-coverage reporting. See the project
+engineering report for a full accounting of what's real, what's a documented
+proxy, and what remains a known limitation.
+
+## Project structure
 
 ```
-http://localhost:8080
+backend/    Spring Boot API — routing orchestration, risk model, tests
+frontend/   React + Mapbox UI
+pipeline/   Node.js data pipeline — OSM fetch → canonical schema → risk grid
 ```
 
----
+## Contributors
 
-## Future Improvements
-
-* Integration with Google Directions API
-* Polyline decoding for route segment scoring
-* PostGIS spatial database support
-* Machine learning risk weighting
-* Real-time crowd-sourced safety signals
-
----
-
-Contributors
-
-Lakshya
-
-Vinod Prajapati
+Lakshya, Vinod Prajapati

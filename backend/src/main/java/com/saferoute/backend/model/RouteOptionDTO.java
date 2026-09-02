@@ -10,10 +10,18 @@ public class RouteOptionDTO {
     private List<List<Double>> coordinates;
     private List<RouteSegmentDTO> segments;
     private double duration;
+    private double distanceKm;
     private double riskScore;
     private String riskLevel;
+    private double confidence;
+    private String coverageTier;
+    private double totalExposureIndex;
     private String description;
     private boolean primary;
+    /** True if no other candidate is both safer and no slower (see RouteSelectionService). */
+    private boolean paretoOptimal;
+    /** How this candidate was produced: "ORS_DIRECT" or "ORS_RISK_AVOIDANCE". */
+    private String generationMethod;
 
     /** Used server-side for description generation; not sent to client. */
     @JsonIgnore
@@ -45,4 +53,22 @@ public class RouteOptionDTO {
 
     public RouteRiskSummary getRiskSummary() { return riskSummary; }
     public void setRiskSummary(RouteRiskSummary riskSummary) { this.riskSummary = riskSummary; }
+
+    public double getDistanceKm() { return distanceKm; }
+    public void setDistanceKm(double distanceKm) { this.distanceKm = distanceKm; }
+
+    public double getConfidence() { return confidence; }
+    public void setConfidence(double confidence) { this.confidence = confidence; }
+
+    public String getCoverageTier() { return coverageTier; }
+    public void setCoverageTier(String coverageTier) { this.coverageTier = coverageTier; }
+
+    public double getTotalExposureIndex() { return totalExposureIndex; }
+    public void setTotalExposureIndex(double totalExposureIndex) { this.totalExposureIndex = totalExposureIndex; }
+
+    public boolean isParetoOptimal() { return paretoOptimal; }
+    public void setParetoOptimal(boolean paretoOptimal) { this.paretoOptimal = paretoOptimal; }
+
+    public String getGenerationMethod() { return generationMethod; }
+    public void setGenerationMethod(String generationMethod) { this.generationMethod = generationMethod; }
 }

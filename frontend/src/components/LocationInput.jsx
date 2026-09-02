@@ -5,13 +5,19 @@ export default function LocationInput({ placeholder, value, setValue }) {
 
   const fetchPlaces = async (query) => {
     if (!query) return setSuggestions([]);
+    const token = import.meta.env.VITE_MAPBOX_TOKEN;
+    if (!token) return setSuggestions([]); // no token configured — fail quietly, not with a crash
 
-    const res = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${import.meta.env.VITE_MAPBOX_TOKEN}&autocomplete=true&limit=5`
-    );
-
-    const data = await res.json();
-    setSuggestions(data.features);
+    try {
+      const res = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&autocomplete=true&limit=5`
+      );
+      if (!res.ok) return setSuggestions([]);
+      const data = await res.json();
+      setSuggestions(Array.isArray(data.features) ? data.features : []);
+    } catch {
+      setSuggestions([]);
+    }
   };
 
   const handleChange = (e) => {

@@ -6,6 +6,8 @@ public class RouteRequest {
     private Location destination;
     private String time;
     private String mode;
+    /** One of the six supported city ids (delhi, mumbai, bengaluru, hyderabad, pune, chennai). */
+    private String city;
 
     public static class Location {
         private double lat;
@@ -42,6 +44,14 @@ public class RouteRequest {
 
     public String getMode() {
         return mode;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
     }
 
     public void setOrigin(Location origin) {

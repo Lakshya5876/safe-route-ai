@@ -6,6 +6,7 @@ public class RouteSegmentDTO {
 
     private List<List<Double>> coordinates;
     private String riskLevel;
+    private double riskScore;
 
     public RouteSegmentDTO(List<List<Double>> coordinates, String riskLevel) {
         this.coordinates = coordinates;
@@ -18,5 +19,13 @@ public class RouteSegmentDTO {
 
     public String getRiskLevel() {
         return riskLevel;
+    }
+
+    public double getRiskScore() {
+        return riskScore;
+    }
+
+    public void setRiskScore(double riskScore) {
+        this.riskScore = riskScore;
     }
 }

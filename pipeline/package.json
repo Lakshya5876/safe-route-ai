@@ -4,7 +4,11 @@
   "description": "CSV to risk-zones JSON for SafeRoute Delhi",
   "type": "module",
   "scripts": {
-    "process": "node process-csv-to-zones.js",
-    "process:sample": "node process-csv-to-zones.js sample-delhi-crimes.csv"
+    "build": "node src/build-all.js all",
+    "build:city": "node src/build-all.js",
+    "fetch": "node src/fetch-osm-features.js",
+    "canonical": "node src/build-canonical-events.js",
+    "grid": "node src/build-risk-grid.js",
+    "test": "node --test test/*.test.js"
   }
 }
